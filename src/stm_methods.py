@@ -210,14 +210,12 @@ class CheckNodalZone():
                         print('Two ties are on the same plane! One tie is reduced.')
                         # replace both edges by one, remove the larger one (as opposite is compressive force)
                         if edges[i].force <= edges[j].force:
-                            print('j is removed', j)
                             edges[i].UpdateForce(edges[i].force - edges[j].force)
                             edges[i].UpdateAreaAuto()
                             end_point = edges[j].end_node.point
                             edges.remove(edges[j])
                             return edges, end_point, j, 1, i
                         else:
-                            print('i is removed', i)
                             edges[j].UpdateForce(edges[j].force - edges[i].force)
                             edges[j].UpdateAreaAuto()
                             end_point = edges[i].end_node.point
