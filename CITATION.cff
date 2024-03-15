@@ -5,8 +5,8 @@ authors:
   given-names: "Karin"
   orcid: "https://orcid.org/0009-0000-0209-9567"
 title: "Strut-and-Tie Modelling"
-version: "0.1"
-date-released: 2024-02-18
+version: "0.2"
+date-released: 2024-03-15
 url: "https://github.com/strukturen/StrutandTieModelling"
 note: "ETH Zürich"
 preferred-citation:
@@ -15,7 +15,7 @@ preferred-citation:
     - family-names: "Yu"
       given-names: "Karin"
       orcid: "https://orcid.org/0009-0000-0209-9567"
-    version: "0.1"
-    date-released: 2024-02-18
+    version: "0.2"
+    date-released: 2024-03-15
     url: "https://github.com/strukturen/StrutandTieModelling"
     note: "ETH Zürich"
