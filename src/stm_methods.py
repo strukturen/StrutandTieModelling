@@ -1,6 +1,9 @@
 """
-This module contains the methods to validate strut-and-tie models.
-Version 0.1: Initial release, only includes validation of strut-and-tie models without nodal zones.
+This module contains the methods to validate strut-and-tie models and to evaluate the hydrostatic nodal zones
+Version 0.2: Includes validation of hydrostatic nodes for corresponding stress fields with concentrated struts and ties.
+----------------
+Older versions:
+Version 0.1: Initial release, only includes validation of strut-and-tie model without nodal zones.
 """
 
 # Copyright (C) 2024
@@ -23,12 +26,16 @@ __author__ = 'Karin Yu'
 __email__ = 'karin.yu@ibk.baug.ethz.ch'
 __copyright__ = 'Copyright 2024, Karin Yu'
 __license__ = 'Apache 2.0'
-__version__ = '0.1'
+__version__ = '0.2'
 __maintainer__ = 'Karin Yu'
 
+import copy
+import math
 import numpy as np
 from abc import ABC, abstractmethod
+import stm_trusssystem as TS
 
+# functions needed to solve the truss
 def LocalStiffnessTruss(E, A, I, Li):
     #k = E*A/L*np.array([[1, 0,-1, 0], [0, 0, 0, 0], [-1, 0, 1, 0], [0, 0, 0, 0]])
     k = np.array([
@@ -163,4 +170,201 @@ class DSM(Truss_Solve_Method):
 
     def checkvalidTruss(self):
         return self.validTruss
+
+# class to check nodal zones
+class CheckNodalZone():
+    def __init__(self, tol = 1e-4, print_disc_points = False, check_disc_points = False, polygon_in = None, polygon_out = None):
+        self.tol = tol # tolerance for comparison
+        self.print_discontinuity_points = print_disc_points
+        self.check_discontinuity_points = check_disc_points
+        if self.check_discontinuity_points:
+            if polygon_in is None:
+                raise ValueError("Polygons are not defined.")
+            self.polygon_in = polygon_in
+            self.polygon_out = polygon_out
+
+    def applybtoEdge(self, d, positiveside=True):
+        # d = [endpoint_x, endpoint_y, ux, uy, width]
+        # moves edge to the positive or negative side --> show strut thickness
+        # positive side is right side
+        # for each strut it takes into account the width of the strut and adds it
+        new = copy.deepcopy(d)
+        if positiveside:
+            move = d[4] / 2  # width of strut/2 and direction +
+        else:
+            move = -1 * d[4] / 2  # width of strut/2 and direction -
+        perpendicular_direction = [-1 * d[3], d[2]]  # [-uy, ux]
+        new[0] = d[0] + move * perpendicular_direction[0]
+        new[1] = d[1] + move * perpendicular_direction[1]
+        return new
+
+    def reduceNumEdges(self, edges):
+        # if there are more than 3 edges we need to reduce the edges
+        # returns new edges, either intersection point (2 Ties) or distance to intersection point from center point, original edge numbering, case, new edge index
+        # cases: '1' two ties, '2' else
+        # 1. Check whether two tension ties are in one plane, replace by one
+        for i in range(len(edges) - 1):
+            if edges[i].type > 0:
+                for j in range(i + 1, len(edges)):
+                    if edges[j].type > 0 and math.isclose(abs(edges[i].line.angle - edges[j].line.angle), math.pi):
+                        print('Two ties are on the same plane! One tie is reduced.')
+                        # replace both edges by one, remove the larger one (as opposite is compressive force)
+                        if edges[i].force <= edges[j].force:
+                            print('j is removed', j)
+                            edges[i].UpdateForce(edges[i].force - edges[j].force)
+                            edges[i].UpdateAreaAuto()
+                            end_point = edges[j].end_node.point
+                            edges.remove(edges[j])
+                            return edges, end_point, j, 1, i
+                        else:
+                            print('i is removed', i)
+                            edges[j].UpdateForce(edges[j].force - edges[i].force)
+                            edges[j].UpdateAreaAuto()
+                            end_point = edges[i].end_node.point
+                            edges.remove(edges[i])
+                            return edges, end_point, i, 1, i
+        # 2. determine two "smallest" edges by choosing the ones with the smallest angle between the lines
+        min_sum = TS.BoundAngles(edges[0].line.angle - edges[-1].line.angle)
+        min_pair = [-1, 0]
+        for i in range(len(edges)-1):
+            current_sum = edges[i+1].line.angle - edges[i].line.angle
+            if current_sum < min_sum: # and current_sum > 0
+                min_sum = current_sum
+                min_pair = [i, i+1]
+        # add the two edges
+        UVL1 = TS.UnitVector(edges[min_pair[0]].line)
+        UVL2 = TS.UnitVector(edges[min_pair[1]].line)
+        Ftot = [edges[min_pair[0]].force * UVL1.ux + edges[min_pair[1]].force * UVL2.ux,
+                edges[min_pair[0]].force * UVL1.uy + edges[min_pair[1]].force * UVL2.uy,
+                edges[min_pair[0]].force * UVL1.uz + edges[min_pair[1]].force * UVL2.uz]
+        angle = TS.getAngle(Ftot[0], Ftot[1]) + math.pi #only in x-y plane, compression is positive --> add pi
+        # since all forces were converted into compressive forces
+        sgn = -1
+        # define new start_node
+        L_new_start_node = TS.Node(TS.Point(edges[min_pair[0]].end_node.point.x +sgn* math.cos(angle)*100, edges[min_pair[0]].end_node.point.y +sgn* math.sin(angle)*100, edges[min_pair[0]].end_node.point.z))
+        # define equivalent edge
+        Fmag = math.sqrt(sum([f**2 for f in Ftot]))
+        area_tot = abs(Fmag / edges[min_pair[0]].mat.fy)
+        new_edge = TS.Edge(L_new_start_node, edges[0].end_node, edges[min_pair[0]].mat, A = area_tot, F = sgn*Fmag, b = area_tot/(edges[min_pair[0]].area/edges[min_pair[0]].width))
+        # replace edge
+        if min_pair[0] >= 0:
+            new_edges = edges[:min_pair[0]]+[new_edge] + edges[min_pair[1]+1:]
+        else:
+            new_edges = edges[min_pair[1]+1:min_pair[0]] + [new_edge]
+        # calculate relative discontinuous intersection point from center of new edge [-uy, ux]
+        # width_new / 2 + width_ol
+        UV_new_edge = TS.UnitVector(new_edge.line)
+        dp1 = TS.Point(-1*(-UVL1.uy * edges[min_pair[0]].width) + (-UV_new_edge.uy * new_edge.width / 2),
+                       -1*(UVL1.ux * edges[min_pair[0]].width) + (UV_new_edge.ux * new_edge.width / 2), 0)
+        dp2 = TS.Point((-UVL2.uy * edges[min_pair[1]].width) - (-UV_new_edge.uy * new_edge.width / 2),
+                       (UVL2.ux * edges[min_pair[1]].width) - (UV_new_edge.ux * new_edge.width / 2), 0)
+        # dp1 and dp2 should be equal
+        if dp1 != dp2:
+            raise ValueError("The distances of the discontinuous points are not equal.")
+        return new_edges, dp1, min_pair[0], 2, min_pair[0]
+
+
+    def HydrostaticNZCheck(self, edges, fck):
+        print('Hydrostatic nodal zones are assumed.')
+        # checks whether hydrostatic stress is fulfilled in nodes
+        # 1. all end nodes must be the same
+        edges = copy.deepcopy(edges)
+        for e in edges:
+            if e.force > 0:
+                e.line.mirror(False)
+                e.force = -1*e.force
+            if e.mat.fy != fck: # change force
+                e.mat.fy = float(fck)
+                e.UpdateAreaAuto()
+        edges_indices = sorted(range(len(edges)), key = lambda index: edges[index].line.angle)
+        edges = [edges[edges_indices[i]] for i in range(len(edges_indices))]
+        # 2. if there are more than three intersecting edges they must be reduced to three
+        # relative_disc_inter_p_red stores information about reduced edges
+        relative_disc_inter_p_red = []
+        #print('Current number of edges:', len(edges))
+        while len(edges) > 3:
+            # returns new edges, either intersection point (2 Ties) or distance to intersection point from center point, original edge numbering, case, new edge index
+            edges, rel_disc_intersect_p, ind, case, new_edge_index = self.reduceNumEdges(edges)
+            relative_disc_inter_p_red.append([rel_disc_intersect_p,ind, case])
+            if edges[new_edge_index].force > 0:
+                edges[new_edge_index].line.mirror(False)
+                edges[new_edge_index].force = -1*edges[new_edge_index].force
+        #print('Reduced number of edges:', len(edges))
+        # 3. check for hydrostatic node
+        # Nodal zone check for hydrostatic nodes
+        if fck < 0:
+            raise ValueError("fck should be a positive input parameter.")
+        #since hydrostatic, we just need to check force equilibrium in the node
+        fx, fy, fz = 0, 0, 0
+        min_sig = edges[0].force/edges[0].area
+        direc = []
+        for e in edges:
+            e.getprojectedForce()
+            fx = fx + e.fx
+            fy = fy + e.fy
+            fz = fz + e.fz
+            if abs(abs(e.force/e.area) - abs(min_sig)) > self.tol:
+                print('Min stress: ', min_sig, 'Curr stress: ', abs(e.force/e.area))
+                raise ValueError("This is not a hydrostatic node.")
+            min_sig = min(e.force/e.area, min_sig)
+            direc.append([e.end_node.point.x, e.end_node.point.y, e.line.ux, e.line.uy, e.width])
+        # 4. determine discontinuity points (borders of nodal zone)
+        disc_points = []
+        for i in range(len(edges)):
+            disc_points.append(self.generate_disc_points(direc, edges, i))
+        if abs(fx)+abs(fy)+abs(fz) < self.tol: # check for force equilibrium with certain tolerance
+            for i in range(len(relative_disc_inter_p_red)-1, -1, -1):
+                # relative_disc_inter_p_red contains [either intersection point (2 Ties) or distance to intersection point from center point, original edge numbering, case]
+                if relative_disc_inter_p_red[i][2] == 1: # two ties
+                    if relative_disc_inter_p_red[i][1] >= len(disc_points):
+                        disc_points = disc_points[:relative_disc_inter_p_red[i][1]-1] + [
+                            disc_points[relative_disc_inter_p_red[i][1]-1]] + [disc_points[0]]
+                    else:
+                        disc_points = disc_points[:relative_disc_inter_p_red[i][1] + 1] +  [disc_points[relative_disc_inter_p_red[i][1]]] + disc_points[relative_disc_inter_p_red[i][1] + 1:]
+                else: # other cases
+                    # find discontinuity point between reduced edges
+                    if 0 <= relative_disc_inter_p_red[i][1] < len(disc_points) - 1:
+                        equiv_line = TS.Line(disc_points[relative_disc_inter_p_red[i][1]], disc_points[relative_disc_inter_p_red[i][1]+1])
+                    else:
+                        equiv_line = TS.Line(disc_points[relative_disc_inter_p_red[i][1]], disc_points[0])
+                    center_equiv_line = TS.getCenterofLine(equiv_line)
+                    disc_intersect = TS.movePoint(center_equiv_line, relative_disc_inter_p_red[i][0])
+                    disc_points = disc_points[:relative_disc_inter_p_red[i][1] + 1] + [disc_intersect] + disc_points[relative_disc_inter_p_red[i][1] + 1:]
+            # include if you want to print the locations of the discontinuity points
+            if self.print_discontinuity_points:
+                print('Discontinuity points:')
+                for p in disc_points:
+                    print(p.printPoint())
+            if self.check_discontinuity_points:
+                for poly in self.polygon_in:
+                    for p in disc_points:
+                        if not poly.containsPoint(p):
+                            print('Discontinuity point p: ', p.printPoint(), ' is not inside the geometry.')
+                if not self.polygon_out is None:
+                    for poly in self.polygon_out:
+                        for p in disc_points:
+                            if not poly.containsPoint(p):
+                                print('Discontinuity point p: ', p.printPoint(), ' is inside an opening.')
+            return min_sig >= -1*fck-self.tol, disc_points, edges_indices
+        else: # if force equilibrium is not fulfilled
+            print('Here: fx: {:.2f}, fy: {:.2f}, fz: {:.2f}, given the minimum stress: {:.2f}'.format(fx, fy, fz, min_sig))
+            print('If the stresses are only slightly off, consider changing the tolerance tol to a higher value.')
+            raise ValueError("This node is not in equilibrium.")
+
+    def generate_disc_points(self, direc, edges, i):
+        # generates discontinuity points based on the direction of the edges, the edges and the index of the edge
+        # move edges by edge width/2 of neighboring struts
+        edge1 = self.applybtoEdge(direc[i - 1], positiveside=False)
+        edge2 = self.applybtoEdge(direc[i], positiveside=True)
+        # determine intersection point through linear algebra
+        A = np.array([[edge1[2], -1 * edge2[2]], [edge1[3], -1 * edge2[3]]])
+        if not np.linalg.det(A):
+            lmd = np.array([[1]])
+        else:
+            b = np.array([[edge2[0] - edge1[0]], [edge2[1] - edge1[1]]])
+            lmd = np.dot(np.linalg.inv(A), b)
+        return TS.Point(x=edge1[0] + lmd[0, 0] * edge1[2], y=edge1[1] + lmd[0, 0] * edge1[3],
+                        z=edges[i - 1].end_node.point.z)
+
+
 

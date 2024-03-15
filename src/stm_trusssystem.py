@@ -1,6 +1,9 @@
 """
-This module contains functions to build the truss/strut-and-tie model.
-Version 0.1: Initial release, only includes validation of strut-and-tie models without nodal zones.
+This module contains functions to build the truss/strut-and-tie model and to plot the corresponding stress fields.
+Version 0.2: Includes validation of hydrostatic nodes for corresponding stress fields with concentrated struts and ties.
+----------------
+Older versions:
+Version 0.1: Initial release, only includes validation of strut-and-tie model without nodal zones.
 """
 
 # Copyright (C) 2024
@@ -23,11 +26,12 @@ __author__ = 'Karin Yu'
 __email__ = 'karin.yu@ibk.baug.ethz.ch'
 __copyright__ = 'Copyright 2024, Karin Yu'
 __license__ = 'Apache 2.0'
-__version__ = '0.1'
+__version__ = '0.2'
 __maintainer__ = 'Karin Yu'
 
 import numpy as np
 import math
+import copy
 import matplotlib.pyplot as plt
 from stm_methods import *
 
@@ -78,6 +82,21 @@ class Point:
         if verbose: print('x: {:.2f}, y: {:.2f}, z: {:.2f}'.format(self.x, self.y, self.z))
         return [self.x, self.y, self.z]
 
+    def changePoint(self, x = None, y = None, z = None):
+        if type(x) == float:
+            self.x = x
+        if type(y) == float:
+            self.y = y
+        if type(z) == float:
+            self.z = z
+
+def movePoint(p: Point, dp: Point):
+    new_p = copy.deepcopy(p)
+    new_p.x = p.x+dp.x
+    new_p.y = p.y + dp.y
+    new_p.z = p.z + dp.z
+    return new_p
+
 class Line:
     def __init__(self, start: Point, end: Point):
         self.start = start
@@ -101,20 +120,21 @@ class Line:
     def updateAngle(self):
         UV = UnitVector(self)
         self.angle = UV.angle
+        self.ux = UV.ux
+        self.uy = UV.uy
+        self.uz = UV.uz
+
+def getCenterofLine(L: Line):
+    UV = UnitVector(L)
+    center_point = Point(L.start.x + L.length/2*UV.ux, L.start.y + L.length/2*UV.uy, L.start.z + L.length/2*UV.uz)
+    return center_point
 
 class UnitVector:
     def __init__(self, L: Line):
-        if L.length == 0:
-            self.ux = 0
-            self.uy = 0
-            self.uz = 0
-            self.angle = 0
-        else:
-            self.ux = (L.end.x-L.start.x)/L.length
-            self.uy = (L.end.y-L.start.y)/L.length
-            self.uz = (L.end.z-L.start.z)/L.length
-            self.angle = getAngle(self.ux, self.uy)
-            self.angle = BoundAngles(self.angle)
+        self.ux = (L.end.x-L.start.x)/L.length
+        self.uy = (L.end.y-L.start.y)/L.length
+        self.uz = (L.end.z-L.start.z)/L.length
+        self.angle = BoundAngles(getAngle(self.ux, self.uy))
 
     def opposite(self):
         self.ux, self.uy, self.uz = -1*self.ux, -1*self.uy, -1*self.uz
@@ -214,10 +234,10 @@ class Edge:
     start_node: Node
     end_node: Node
     mat: Material
-    line: Line
     # specific to reinforced concrete
     type: int  # -1: strut, 0: 0 force,  1: tie
     # attributes
+    line: Line
     area: float
     width: float
     force: float
@@ -233,7 +253,6 @@ class Edge:
         self.start_node = start
         self.end_node = end
         self.mat = mate
-        self.line = Line(start.point, end.point)
         self.area = A
         self.mom_inertia = I
         self.force = F
@@ -250,6 +269,10 @@ class Edge:
             return True
         else:
             return False
+
+    @property
+    def line(self):
+        return Line(self.start_node.point, self.end_node.point)
 
     def CheckStress(self):
         if self.stress < 0:
@@ -283,24 +306,23 @@ class Edge:
         unit_vec = UnitVector(self.line)
         self.fx, self.fy, self.fz = unit_vec.ux * self.force, unit_vec.uy * self.force, unit_vec.uz * self.force
 
-    def UpdateLine(self):
-        if self.line.start != self.start_node.point:
-            self.line.end, self.line.start = self.line.start, self.line.end
-            self.line.updateAngle()
 
 
 # Boundary Conditions
 class Support:
-    def __init__(self, n: Node, DOF_support: DOF):
+    def __init__(self, n: Node, DOF_support: DOF, force = None):
         self.node = n
         self.dof = DOF_support
+        if force is None:
+            self.force = [0,0,0,0,0,0]
+        else:
+            self.force = force
 
     def __eq__(self, other):
         if type(other) is Node:
             return self.node == other
         else:
             return (self.node == other.node) and (self.dof == other.dof)
-
 
 class Force_ext:
     def __init__(self, n: Node, F_mag, direc_Force: DOF = DOF(0, 0, 0, 0, 0, 0)):
@@ -385,7 +407,7 @@ class Polygon:  # assume all points are on one plane
         if self.isPolygon:
             self.RotationMatrixforCoordinateTransform()
             # Ray-casting algorithm
-            Ray = Line(p, Point(self.Points[0].x, self.Points[0].y - 100, self.Points[0].z))
+            Ray = Line(p, Point(self.Points[0].x, self.Points[0].y - 100, self.Points[0].z))  # TODO: Check this
             Ray = self.LineCoordinateTransform(Ray)
             currLine = self.LineCoordinateTransform(Line(self.Points[-1], self.Points[0]))
             count = 0
@@ -400,10 +422,20 @@ class Polygon:  # assume all points are on one plane
         else:
             raise ValueError('Search space is not a polygon.')
 
+    def getgeometry(self):
+        gx = []
+        gy = []
+        for i in range(len(self.Points)):
+            gx.append(self.Points[i].x)
+            gy.append(self.Points[i].y)
+        gx.append(self.Points[0].x)
+        gy.append(self.Points[0].y)
+        return [gx, gy]
+
 
 class TrussSystem:
     SearchSpace: list  # list of polygons
-    MaterialList: list  # list of materials
+    MaterialList: list  # list of materials, first material must be concrete and the second steel.
     NodeList: list  # list of nodes
     EdgeList: list  # list of edges / trusses
     ForceList: list  # list of forces
@@ -432,6 +464,8 @@ class TrussSystem:
             self.SearchSpace.append(Poly)
 
     def addMaterial(self, mat: Material):
+        if len(self.MaterialList) == 0:
+            print('Make sure that the first material is concrete and the second for steel.')
         if mat not in self.MaterialList:
             self.MaterialList.append(mat)
 
@@ -526,7 +560,9 @@ class TrussSystem:
                 raise ValueError('Support node is not in NodeList.')
 
     def solveTruss(self, update=False, A_min=0, d_max=None):
-        self.EdgeForces, self.nodal_disp, self.restrainedForces, self.ShearForces, self.BendingMoments = self.solvermethod.solveSystem(
+        for e in self.EdgeList:
+            e.area = 1e6 # make it infinitely stiff for solver convergence
+        self.EdgeForces, self.nodal_disp, restrainedForces, self.ShearForces, self.BendingMoments = self.solvermethod.solveSystem(
             self.NodeList, self.EdgeList, self.numDofs, self.ForceList, self.SupportList)
         if len(self.nodal_disp[0]) == 1:
             self.nodal_disp = np.reshape(self.nodal_disp, (len(self.nodal_disp) // 3, 3))
@@ -534,6 +570,15 @@ class TrussSystem:
             for i in range(len(self.EdgeList)):
                 self.EdgeList[i].UpdateForce(self.EdgeForces[i])
                 self.EdgeList[i].UpdateAreaAuto(A_min)
+        # update support forces
+        scnt = 0 # count restrained forces
+        for s in self.SupportList:
+            if s.dof.Dx != 0:
+                s.force[0] = restrainedForces[scnt]
+                scnt += 1
+            if s.dof.Dy != 0:
+                s.force[1] = restrainedForces[scnt]
+                scnt += 1
         self.issolved = True
 
     def ValidTruss(self):
@@ -543,7 +588,7 @@ class TrussSystem:
                     self.statdet))
         return self.solvermethod.checkvalidTruss()
 
-    def checkEquilibrium(self):
+    def checkEquilibrium(self, tol = 1e-6):
         if not self.issolved: raise ValueError('System has not been solved.')
         Nod = [[0, 0, 0] for _ in self.NodeList]
         for e in self.EdgeList:
@@ -554,11 +599,8 @@ class TrussSystem:
             Nod[e.end_id][0] += e.fx
             Nod[e.end_id][1] += e.fy
             Nod[e.end_id][2] += e.fz
-        res = 0
-        for i in range(len(self.NodeList)):
-            if not self.NodeList[i].isSupport:
-                res += abs(self.NodeList[i].isSupport)
-        return math.isclose(res, 0)
+        res = np.sum(np.sum(Nod, axis=0))
+        return math.isclose(res, 0, rel_tol=tol, abs_tol=tol)
 
     def getStaticDeterminancy(self):
         # TODO: Implement static determinancy for 3D
@@ -576,8 +618,8 @@ class TrussSystem:
         self.statdet = p + r - 2 * n
         return self.statdet
 
-    def plotSTM(self, fig_size=(12, 6), savefig=None, ForceList=None, plot_scale=1e4, draw_geometry=True,
-                without_forces=False, label_edges = False):
+    def plotSTM(self, fig_size=(12, 6), savefig=None, ForceList=None, plot_scale=1e4, polygon_in = None, polygon_out = None,
+                without_forces=False, label_edges = False, plot_legend = True):
         plt.figure(figsize=fig_size)
         if self.SearchSpace:
             ymin, ymax = -500, 500
@@ -589,11 +631,20 @@ class TrussSystem:
                     yval.append(p.y)
                 xval.append(xval[0])
                 yval.append(yval[0])
-                if draw_geometry:
+                if polygon_in is None:
                     plt.plot(xval, yval, 'k-', linewidth=1)
                 ymin = min([0.9 * min(yval), ymin, 1.1 * min(yval)])
                 ymax = max([1.1 * max(yval), ymax])
             plt.ylim([ymin, ymax])
+        # plot geometry if it has not been done yet
+        if not polygon_in is None:
+            for poly in polygon_in:
+                g = poly.getgeometry()
+                plt.plot(g[0], g[1], 'k-', linewidth=1)
+            if not polygon_out is None:
+                for poly in polygon_out:
+                    g = poly.getgeometry()
+                    plt.plot(g[0], g[1], 'k-', linewidth=1)
         for n in self.NodeList:
             plt.plot(n.point.x, n.point.y, '.', color='#bbbbbb', markersize=10)
         for i in range(len(self.EdgeList)):
@@ -639,6 +690,188 @@ class TrussSystem:
                 plt.plot(s.node.point.x, s.node.point.y, 'x', color=color_map['grey'], markersize=10, label = 'Support')
             else:
                 plt.plot(s.node.point.x, s.node.point.y, 'x', color=color_map['grey'], markersize=10)
-        plt.legend(loc='upper right')
+        if plot_legend:
+            plt.legend(loc='upper right')
         if savefig is not None:
             plt.savefig(savefig, dpi=600)
+
+    # functions to plot the stress field
+    def getEdgeEquivalentStrut(self, force, curr_node, axis):
+        if axis == 'x':
+            dx, dy = 100, 0
+        elif axis == 'y':
+            dx, dy = 0, 100
+        start_node = Node(
+            Point(curr_node.node.point.x + curr_node.dof.Dx * dx, curr_node.node.point.y + curr_node.dof.Dy * dy,
+                  curr_node.node.point.z))
+        edge = Edge(start_node, curr_node.node, self.MaterialList[0], F=force)
+        edge.UpdateAreaAuto()
+        edge.end_id = self.NodeList.index(edge.end_node)
+        return edge
+
+    def getSupportEquivalentStrut(self):
+        tol = 1e-6
+        if not self.issolved:
+            raise ValueError("Please, first solve the truss system!")
+        cnt = 0
+        EL = []  # Edge list for support reactions
+        ind_EL = []  # index in Edge list per Support List index
+        for i in range(len(self.SupportList)):
+            ind = []
+            if self.SupportList[i].dof.Dx != 0: # supported in x direction
+                force = float(self.SupportList[i].force[0])
+                if abs(force) > tol:
+                    ind.append(cnt)
+                    edge = self.getEdgeEquivalentStrut(force, self.SupportList[i], 'x')
+                    EL.append(edge)
+                    cnt += 1
+            if self.SupportList[i].dof.Dy != 0: # supported in y direction
+                force = float(self.SupportList[i].force[1])
+                if abs(force) > tol:
+                    ind.append(cnt)
+                    edge = self.getEdgeEquivalentStrut(force, self.SupportList[i], 'y')
+                    EL.append(edge)
+                    cnt += 1
+            ind_EL.append(ind)
+        return EL, ind_EL
+
+    def getExtForceEquivalentStrut(self):
+        if not self.issolved:
+            raise ValueError("Please, first solve the truss system!")
+        cnt = 0
+        EL = []  # Edge list for forces
+        ind_EL = []  # index in edge list per force List index
+        for i in range(len(self.ForceList)):
+            ind = []
+            if self.ForceList[i].Force_magnitude[0] != 0:  # Fx
+                if self.ForceList[i].dof.Dx == 0:
+                    raise ValueError("Please, define directions for external force.")
+                ind.append(cnt)
+                force = self.ForceList[i].dof.Dx * self.ForceList[i].Force_magnitude[0]
+                edge = self.getEdgeEquivalentStrut(force, self.ForceList[i], 'x')
+                EL.append(edge)
+                cnt += 1
+            if self.ForceList[i].Force_magnitude[1] != 0:  # Fy
+                if self.ForceList[i].dof.Dy == 0:
+                    raise ValueError("Please, define directions for external force.")
+                ind.append(cnt)
+                force = self.ForceList[i].dof.Dy * self.ForceList[i].Force_magnitude[1]
+                edge = self.getEdgeEquivalentStrut(force, self.ForceList[i], 'y')
+                EL.append(edge)
+                cnt += 1
+            ind_EL.append(ind)
+        return EL, ind_EL
+
+
+    def plotStressField(self, fig_size=(12, 6), savefig: str = None, hydrostaticNodes=True, t=1, tol = 1e-2, polygon_in = None, polygon_out = None, print_disc_points = False, check_disc_points= False):
+        # t = thickness of RC structure
+        Method_CheckNZ = CheckNodalZone(tol, print_disc_points, check_disc_points, polygon_in = polygon_in, polygon_out = polygon_out)
+        # plots stress field with the help of nodal zone checks
+        # check nodal zones
+        self.NZList = []  # same order as NodeList, Result, Edges, Disc.Points
+        fck = self.MaterialList[0].fy  # first in MaterialList is Concrete
+        print('The maximum hydrostatic stress is assumed as : ', fck)
+        Support_EL, Support_EL_ind = self.getSupportEquivalentStrut()
+        Force_EL, Force_EL_ind = self.getExtForceEquivalentStrut()
+        for n in self.NodeList:
+            # end node needs to match n
+            print("\ncurrent node:", n.point.printPoint())
+            EL = []
+            for e in self.EdgeList:
+                if e.start_node == n:
+                    edge = copy.deepcopy(e)
+                    edge.start_node, edge.end_node = e.end_node, e.start_node
+                    edge.width = edge.area / t
+                    EL.append(edge)
+                elif e.end_node == n:
+                    edge = copy.deepcopy(e)
+                    edge.width = e.area / t
+                    EL.append(edge)
+            if n in self.SupportList:
+                sup_ind = self.SupportList.index(n)
+                ind = Support_EL_ind[sup_ind]
+                for i in ind:
+                    e = Support_EL[i]
+                    e.width = e.area / t
+                    EL.append(e)
+            if n in self.ForceList:
+                force_ind = self.ForceList.index(n)
+                ind = Force_EL_ind[force_ind]
+                for i in ind:
+                    e = Force_EL[i]
+                    e.width = e.area / t
+                    EL.append(e)
+            CheckNZ, discPoints, edge_ind = Method_CheckNZ.HydrostaticNZCheck(EL, fck)
+            EL = [EL[edge_ind[i]] for i in range(len(edge_ind))]
+            self.NZList.append([CheckNZ, EL, discPoints])
+        plt.figure(figsize=fig_size)
+        if self.SearchSpace:
+            ymin, ymax = -500, 500
+            for poly in self.SearchSpace:
+                xval = []
+                yval = []
+                for p in poly.Points:
+                    xval.append(p.x)
+                    yval.append(p.y)
+                xval.append(xval[0])
+                yval.append(yval[0])
+                if polygon_in is None:
+                    plt.plot(xval, yval, 'k-', linewidth=1)
+                ymin = min([0.9 * min(yval), ymin, 1.1 * min(yval)])
+                ymax = max([1.1 * max(yval), ymax])
+            plt.ylim([ymin, ymax])
+        line_t = 2
+        # plot discontinuity lines
+        for nz in self.NZList:
+            if nz[0]:
+                cnz = 'y'
+            else:
+                cnz = color_map['r']
+            for i in range(len(nz[2])):
+                plt.plot([nz[2][i - 1].x, nz[2][i].x],
+                         [nz[2][i - 1].y, nz[2][i].y], '-', color=cnz, linewidth=line_t)
+        for e in self.EdgeList:
+            f = e.force
+            if f < 0:
+                c = color_map['g']  # green, compression
+            elif f == 0:
+                c = 'k'
+            else:
+                c = color_map['b']  # blue, tension
+            if e.start_id is not None:
+                nz_start = self.NZList[e.start_id]
+                # starting node
+                e_ind_start = nz_start[1].index(e) + 1
+                if e_ind_start >= len(nz_start[2]):
+                    e_ind_start = 0
+            if e.end_id is not None:
+                nz_end = self.NZList[e.end_id]
+                # end node
+                e_ind_end = nz_end[1].index(e) + 1
+                if e_ind_end >= len(nz_end[2]):
+                    e_ind_end = 0
+            if e.start_id is not None and e.end_id is not None:
+                if c != color_map['b']:
+                    # plot struts as stress fields
+                    plt.plot([nz_start[2][e_ind_start - 1].x, nz_end[2][e_ind_end].x],
+                             [nz_start[2][e_ind_start - 1].y, nz_end[2][e_ind_end].y], '-', color=c, linewidth=1)
+                    plt.plot([nz_start[2][e_ind_start].x, nz_end[2][e_ind_end - 1].x],
+                             [nz_start[2][e_ind_start].y, nz_end[2][e_ind_end - 1].y], '-', color=c, linewidth=1)
+                else:
+                    # plot ties as ties
+                    plt.plot([e.start_node.point.x,
+                              e.end_node.point.x],
+                             [e.start_node.point.y,
+                              e.end_node.point.y], '-', color=c, linewidth=2)
+        # plot geometry if it has not been done yet
+        if not polygon_in is None:
+            for poly in polygon_in:
+                g = poly.getgeometry()
+                plt.plot(g[0], g[1], 'k-', linewidth=1)
+            if not polygon_out is None:
+                for poly in polygon_out:
+                    g = poly.getgeometry()
+                    plt.plot(g[0], g[1], 'k-', linewidth=1)
+        if savefig is not None:
+            plt.savefig(savefig, dpi=600)
+
