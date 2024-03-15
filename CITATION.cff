@@ -1,0 +1,11 @@
+cff-version 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+- family-names: "Yu"
+  given-names: "Karin"
+  orcid: "0000-0002-7613-3033"
+title: "Strut and Tie Modelling"
+version: "0.1"
+date-released: 2024-02-18
+url: "https://github.com/strukturen/StrutandTieModelling"
+note: "ETH Zürich"
