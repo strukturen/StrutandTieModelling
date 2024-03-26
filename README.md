@@ -4,7 +4,7 @@ This repository contains a python-based project for the design with strut-and-ti
 The current version is 0.2. It includes the validation of strut-and-tie models and the evaluation of hydrostatic nodal zones for stress fields with concentrated struts and ties. For the hydrostatic nodal zones the same center of forces as for the corresponding strut-and-tie models are assumed. Each tie is fully anchored at the nodes. If there are more than three edges acting at one node, then two cases are differentiated. If two ties lie on one plane then the smaller one is removed (as they balance each other out). Otherwise, two edges with the lowest inbetween angle are replaced through one statically equivalent strut.
 
 <figure>
-<img src="images/DEB.png" alt="DEB_STM" width="50%"><img src="images/DEB_SF.png" alt="DEB_SF" width="50%">
+<img src="images/DEB.png" alt="DEB_STM" width="45%"><img src="images/DEB_SF.png" alt="DEB_SF" width="45%">
 <figcaption>Example of a strut-and-tie model (left) and its corresponding stress fields with hydrostatic nodes (right).</figcaption>
 </figure>
 
