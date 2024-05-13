@@ -13,7 +13,7 @@ The current version is 0.2. It includes the validation of strut-and-tie models a
 * Please check out the following two example jupyter notebook files: stm_example_simple_beam.ipynb with the example of a simple beam incl. how a truss can be assembled, a strut-and-tie model be validated and to check the stress fields and nodal zones. The second example stm_example_deb.ipynb is of a dapped-end beam.
 
 ## Authors
-* **Karin Yu**, ETH Zürich, [strukturen](https://github.com/strukturen) or [my website](https://www.karinyu.com)
+* **Karin Yu**, ETH Zürich, [strukturen](https://github.com/strukturen) or [my website](http://www.karinyu.com)
 
 ## Contact/Support
 If you encounter problems or have questions please reach out to karin.yu(a)ibk.baug.ethz.ch.
