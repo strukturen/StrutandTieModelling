@@ -1,9 +1,10 @@
 """
 This module contains functions to build the truss/strut-and-tie model and to plot the corresponding stress fields.
-Version 0.2: Includes validation of hydrostatic nodes for corresponding stress fields with concentrated struts and ties.
+Version 0.3: Now contains a simple GUI.
 ----------------
 Older versions:
 Version 0.1: Initial release, only includes validation of strut-and-tie model without nodal zones.
+Version 0.2: Includes validation of hydrostatic nodes for corresponding stress fields with concentrated struts and ties.
 """
 
 # Copyright (C) 2024
@@ -26,7 +27,7 @@ __author__ = 'Karin Yu'
 __email__ = 'karin.yu@ibk.baug.ethz.ch'
 __copyright__ = 'Copyright 2024, Karin Yu'
 __license__ = 'Apache 2.0'
-__version__ = '0.2'
+__version__ = '0.3'
 __maintainer__ = 'Karin Yu'
 
 import numpy as np

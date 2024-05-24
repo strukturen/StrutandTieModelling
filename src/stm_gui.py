@@ -1,3 +1,35 @@
+"""
+This module contains functions to build the truss/strut-and-tie model and to plot the corresponding stress fields.
+Version 0.3: Now contains a simple GUI.
+----------------
+Older versions:
+Version 0.1: Initial release, only includes validation of strut-and-tie model without nodal zones.
+Version 0.2: Includes validation of hydrostatic nodes for corresponding stress fields with concentrated struts and ties.
+"""
+
+# Copyright (C) 2024
+# Karin Yu
+# ETH Zurich
+
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+
+#     http://www.apache.org/licenses/LICENSE-2.0
+
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+__author__ = 'Karin Yu'
+__email__ = 'karin.yu@ibk.baug.ethz.ch'
+__copyright__ = 'Copyright 2024, Karin Yu'
+__license__ = 'Apache 2.0'
+__version__ = '0.3'
+__maintainer__ = 'Karin Yu'
+
 # Tutorial
 from PyQt6.QtGui import *
 from PyQt6.QtWidgets import *
@@ -17,6 +49,7 @@ from stm_methods import *
 # TODO: Add modify node
 # TODO: Add modify edge connection
 # TODO: Save model or combine with jupyter notebook
+# TODO: Add functions to modify material properties
 
 class MainWindow(QMainWindow):
     def __init__(self, *args, **kwargs):
