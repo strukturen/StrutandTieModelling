@@ -74,9 +74,13 @@ class Point:
         self.x = x
         self.y = y
         self.z = z
+        self.abs_tol = 1e-5
+
+    def change_abs_tol(self, tol):
+        self.abs_tol = tol
 
     def __eq__(self, other):
-        return all([abs(self.x - other.x) < 1e-5, abs(self.y - other.y) < 1e-5, abs(self.z - other.z) < 1e-5])
+        return all([abs(self.x - other.x) < self.abs_tol, abs(self.y - other.y) < self.abs_tol, abs(self.z - other.z) < self.abs_tol])
 
     def printPoint(self, verbose = False):
         if verbose: print('x: {:.2f}, y: {:.2f}, z: {:.2f}'.format(self.x, self.y, self.z))
@@ -460,6 +464,7 @@ class TrussSystem:
         return False
 
     def addPolygontoSS(self, Poly: Polygon):  # , mat: Material
+        #TODO: add outside polygon to it!
         if Poly not in self.SearchSpace:
             self.SearchSpace.append(Poly)
 
@@ -566,9 +571,9 @@ class TrussSystem:
             self.NodeList, self.EdgeList, self.numDofs, self.ForceList, self.SupportList)
         if len(self.nodal_disp[0]) == 1:
             self.nodal_disp = np.reshape(self.nodal_disp, (len(self.nodal_disp) // 3, 3))
-        if update:
-            for i in range(len(self.EdgeList)):
-                self.EdgeList[i].UpdateForce(self.EdgeForces[i])
+        for i in range(len(self.EdgeList)):
+            self.EdgeList[i].UpdateForce(self.EdgeForces[i])
+            if update:
                 self.EdgeList[i].UpdateAreaAuto(A_min)
         # update support forces
         scnt = 0 # count restrained forces
@@ -620,7 +625,8 @@ class TrussSystem:
 
     def plotSTM(self, fig_size=(12, 6), savefig=None, ForceList=None, plot_scale=1e4, polygon_in = None, polygon_out = None,
                 without_forces=False, label_edges = False, plot_legend = True):
-        plt.figure(figsize=fig_size)
+        fig = plt.figure(figsize=fig_size)
+        axs = fig.add_subplot(111)
         if self.SearchSpace:
             ymin, ymax = -500, 500
             for poly in self.SearchSpace:
@@ -632,21 +638,21 @@ class TrussSystem:
                 xval.append(xval[0])
                 yval.append(yval[0])
                 if polygon_in is None:
-                    plt.plot(xval, yval, 'k-', linewidth=1)
+                    axs.plot(xval, yval, 'k-', linewidth=1)
                 ymin = min([0.9 * min(yval), ymin, 1.1 * min(yval)])
                 ymax = max([1.1 * max(yval), ymax])
-            plt.ylim([ymin, ymax])
+            axs.set_ylim([ymin, ymax])
         # plot geometry if it has not been done yet
         if not polygon_in is None:
             for poly in polygon_in:
                 g = poly.getgeometry()
-                plt.plot(g[0], g[1], 'k-', linewidth=1)
+                axs.plot(g[0], g[1], 'k-', linewidth=1)
             if not polygon_out is None:
                 for poly in polygon_out:
                     g = poly.getgeometry()
-                    plt.plot(g[0], g[1], 'k-', linewidth=1)
+                    axs.plot(g[0], g[1], 'k-', linewidth=1)
         for n in self.NodeList:
-            plt.plot(n.point.x, n.point.y, '.', color='#bbbbbb', markersize=10)
+            axs.plot(n.point.x, n.point.y, '.', color='#bbbbbb', markersize=10)
         for i in range(len(self.EdgeList)):
             if ForceList is None:
                 f = self.EdgeList[i].force
@@ -668,32 +674,33 @@ class TrussSystem:
                 else:
                     c = color_map['b']
                     line_t = f / plot_scale
-            plt.plot([self.EdgeList[i].start_node.point.x, self.EdgeList[i].end_node.point.x],
+            axs.plot([self.EdgeList[i].start_node.point.x, self.EdgeList[i].end_node.point.x],
                      [self.EdgeList[i].start_node.point.y, self.EdgeList[i].end_node.point.y], '-', color=c,
                      linewidth=line_t)
             if label_edges:
                 x_text = (self.EdgeList[i].start_node.point.x+ self.EdgeList[i].end_node.point.x)/2
                 y_text = (self.EdgeList[i].start_node.point.y+ self.EdgeList[i].end_node.point.y)/2
-                plt.text(x_text, y_text, '{:.0f}'.format(f), fontsize=9, verticalalignment='bottom')
+                axs.text(x_text, y_text, '{:.0f}'.format(f), fontsize=9, verticalalignment='bottom')
         for i in range(len(self.ForceList)):
             f = self.ForceList[i]
             marker_size = 15
             if f.node in self.SupportList:
                 marker_size = 0
             if i == 0 and marker_size > 0:
-                plt.plot(f.node.point.x, f.node.point.y, '.', color=color_map['orange'], markersize=marker_size, label = 'Force')
+                axs.plot(f.node.point.x, f.node.point.y, '.', color=color_map['orange'], markersize=marker_size, label = 'Force')
             else:
-                plt.plot(f.node.point.x, f.node.point.y, '.', color=color_map['orange'], markersize=marker_size)
+                axs.plot(f.node.point.x, f.node.point.y, '.', color=color_map['orange'], markersize=marker_size)
         for j in range(len(self.SupportList)):
             s = self.SupportList[j]
             if j == 0:
-                plt.plot(s.node.point.x, s.node.point.y, 'x', color=color_map['grey'], markersize=10, label = 'Support')
+                axs.plot(s.node.point.x, s.node.point.y, 'x', color=color_map['grey'], markersize=10, label = 'Support')
             else:
-                plt.plot(s.node.point.x, s.node.point.y, 'x', color=color_map['grey'], markersize=10)
+                axs.plot(s.node.point.x, s.node.point.y, 'x', color=color_map['grey'], markersize=10)
         if plot_legend:
-            plt.legend(loc='upper right')
+            axs.legend(loc='upper right')
         if savefig is not None:
-            plt.savefig(savefig, dpi=600)
+            axs.savefig(savefig, dpi=600)
+        return fig
 
     # functions to plot the stress field
     def getEdgeEquivalentStrut(self, force, curr_node, axis):
@@ -804,7 +811,8 @@ class TrussSystem:
             CheckNZ, discPoints, edge_ind = Method_CheckNZ.HydrostaticNZCheck(EL, fck)
             EL = [EL[edge_ind[i]] for i in range(len(edge_ind))]
             self.NZList.append([CheckNZ, EL, discPoints])
-        plt.figure(figsize=fig_size)
+        fig = plt.figure(figsize=fig_size)
+        axs = fig.add_subplot(111)
         if self.SearchSpace:
             ymin, ymax = -500, 500
             for poly in self.SearchSpace:
@@ -816,10 +824,10 @@ class TrussSystem:
                 xval.append(xval[0])
                 yval.append(yval[0])
                 if polygon_in is None:
-                    plt.plot(xval, yval, 'k-', linewidth=1)
+                    axs.plot(xval, yval, 'k-', linewidth=1)
                 ymin = min([0.9 * min(yval), ymin, 1.1 * min(yval)])
                 ymax = max([1.1 * max(yval), ymax])
-            plt.ylim([ymin, ymax])
+            axs.set_ylim([ymin, ymax])
         line_t = 2
         # plot discontinuity lines
         for nz in self.NZList:
@@ -828,7 +836,7 @@ class TrussSystem:
             else:
                 cnz = color_map['r']
             for i in range(len(nz[2])):
-                plt.plot([nz[2][i - 1].x, nz[2][i].x],
+                axs.plot([nz[2][i - 1].x, nz[2][i].x],
                          [nz[2][i - 1].y, nz[2][i].y], '-', color=cnz, linewidth=line_t)
         for e in self.EdgeList:
             f = e.force
@@ -853,13 +861,13 @@ class TrussSystem:
             if e.start_id is not None and e.end_id is not None:
                 if c != color_map['b']:
                     # plot struts as stress fields
-                    plt.plot([nz_start[2][e_ind_start - 1].x, nz_end[2][e_ind_end].x],
+                    axs.plot([nz_start[2][e_ind_start - 1].x, nz_end[2][e_ind_end].x],
                              [nz_start[2][e_ind_start - 1].y, nz_end[2][e_ind_end].y], '-', color=c, linewidth=1)
-                    plt.plot([nz_start[2][e_ind_start].x, nz_end[2][e_ind_end - 1].x],
+                    axs.plot([nz_start[2][e_ind_start].x, nz_end[2][e_ind_end - 1].x],
                              [nz_start[2][e_ind_start].y, nz_end[2][e_ind_end - 1].y], '-', color=c, linewidth=1)
                 else:
                     # plot ties as ties
-                    plt.plot([e.start_node.point.x,
+                    axs.plot([e.start_node.point.x,
                               e.end_node.point.x],
                              [e.start_node.point.y,
                               e.end_node.point.y], '-', color=c, linewidth=2)
@@ -867,11 +875,12 @@ class TrussSystem:
         if not polygon_in is None:
             for poly in polygon_in:
                 g = poly.getgeometry()
-                plt.plot(g[0], g[1], 'k-', linewidth=1)
+                axs.plot(g[0], g[1], 'k-', linewidth=1)
             if not polygon_out is None:
                 for poly in polygon_out:
                     g = poly.getgeometry()
                     plt.plot(g[0], g[1], 'k-', linewidth=1)
         if savefig is not None:
-            plt.savefig(savefig, dpi=600)
+            axs.savefig(savefig, dpi=600)
+        return fig
 
