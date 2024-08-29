@@ -174,7 +174,7 @@ class DSM(Truss_Solve_Method):
 
 # class to check nodal zones
 class CheckNodalZone():
-    def __init__(self, tol = 1e-4, print_disc_points = False, check_disc_points = False, polygon_in = None, polygon_out = None):
+    def __init__(self, tol = 200, print_disc_points = False, check_disc_points = False, polygon_in = None, polygon_out = None):
         self.tol = tol # tolerance for comparison
         self.print_discontinuity_points = print_disc_points
         self.check_discontinuity_points = check_disc_points
@@ -342,7 +342,7 @@ class CheckNodalZone():
                 if not self.polygon_out is None:
                     for poly in self.polygon_out:
                         for p in disc_points:
-                            if not poly.containsPoint(p):
+                            if poly.containsPoint(p):
                                 print('Discontinuity point p: ', p.printPoint(), ' is inside an opening.')
             return min_sig >= -1*fck-self.tol, disc_points, edges_indices
         else: # if force equilibrium is not fulfilled

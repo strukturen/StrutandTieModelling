@@ -48,6 +48,8 @@ from stm_methods import *
 # TODO: Add remove edge
 # TODO: Add modify node
 # TODO: Add modify edge connection
+# TODO: Add modify force
+# TODO: Check inside continuum
 # TODO: Save model or combine with jupyter notebook
 # TODO: Add functions to modify material properties
 
