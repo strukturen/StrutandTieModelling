@@ -38,27 +38,27 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 import matplotlib.pyplot as plt
 import matplotlib
 import math
+import pickle
 
+import os
 import sys
 import stm_trusssystem as TS
 from stm_methods import *
 
-### TODOs, Karin Yu, 24.05.2024
+### TODOs, Karin Yu, 11.10.2024
 # TODO: Add remove node
 # TODO: Add remove edge
 # TODO: Add modify node
 # TODO: Add modify edge connection
 # TODO: Add modify force
-# TODO: Check inside continuum
-# TODO: Save model or combine with jupyter notebook
-# TODO: Add functions to modify material properties
+# TODO: Check inside continuumc
 
 class MainWindow(QMainWindow):
     def __init__(self, *args, **kwargs):
         super(MainWindow, self).__init__(*args, **kwargs)
         self.setWindowTitle("StrutandTieModelling")
 
-        self.resize(QSize(800, 500))
+        self.resize(QSize(1000, 600))
 
         # Central Widget
         central_widget = QWidget()
@@ -73,26 +73,28 @@ class MainWindow(QMainWindow):
         self.Truss = TS.TrussSystem()
         self.polygon_in = []
         self.polygon_out = []
-
-        # Default material
-        # Reinforcement material values
-        Es = 205000  # MPa
-        fsy = 435  # MPa
-        eps_sy = fsy / Es
-        ds = 1
-        # Concrete material
-        Ec = 30000  # MPa
-        fck = 20  # MPa, fcd
-        eps_c = 0.003
-        dc = -1
-        self.Truss.addMaterial(TS.Material(Ec,fck,eps_c,dc))
-        self.Truss.addMaterial(TS.Material(Es,fsy,eps_sy,ds))
+        self.thickness = 1
+        self.Ac = float(0)
 
         # Label with material properties
         self.text_material = QLabel(self)
-        curr_text = "Material properties:\nConcrete: Ec = {:.0f} GPa, fck = ".format(Ec/1e3) + str(fck) + " MPa\nSteel: Es = {:.0f} GPa, fsy = ".format(Es/1e3) + str(fsy) + " MPa"
-        self.text_material.setText(curr_text)
+        self.setMaterial(default = True)
         layoutButtons.addWidget(self.text_material, stretch = 1)
+
+        # Button to load previous model
+        self.button_load_model = QPushButton("Load model")
+        self.button_load_model.clicked.connect(self.load_model)
+        layoutButtons.addWidget(self.button_load_model, stretch=3)
+
+        # Button to save
+        self.button_save_model = QPushButton("Save model")
+        self.button_save_model.clicked.connect(self.save_model)
+        layoutButtons.addWidget(self.button_save_model, stretch=3)
+
+        # Button to modify material parameters
+        self.button_modify_material = QPushButton("Modify material parameters")
+        self.button_modify_material.clicked.connect(self.modify_material)
+        layoutButtons.addWidget(self.button_modify_material, stretch=3)
 
         # Button to add thickness
         self.button_add_thickness = QPushButton("Add thickness")
@@ -161,11 +163,67 @@ class MainWindow(QMainWindow):
         layout_all.addLayout(layoutButtons)
         layout_all.addLayout(self.layoutDraw)
 
+    def load_model(self):
+        file_dialog = QFileDialog()
+        filename, _ = file_dialog.getOpenFileName(self, 'Open model file', filter='Pickle Files (*.pkl);;Python Files (*.py)')
+        print('File name', filename)
+        if filename[-3:] == '.py':
+            file_dir = os.path.dirname(filename)
+            os.chdir(file_dir)
+            exec(open(filename).read(), globals()) # contains Truss, polygon_in, polygon_out, thickness
+            self.Truss = Truss
+            assert isinstance(self.Truss, TS.TrussSystem)
+            assert len(Truss.MaterialList) == 2
+            self.polygon_in = polygon_in
+            for p in polygon_in:
+                self.Ac += p.area
+            self.polygon_out = polygon_out
+            for p in polygon_out:
+                self.Ac -= p.area
+            self.thickness = thickness
+            # update metrics
+            self.metrics['steel consumption'].h = thickness
+            xmin, xmax, ymin, ymax = 0, 1, 0, 1
+            for poly in self.polygon_in:
+                for point in poly.Points:
+                    xmin = min(xmin, point.x)
+                    xmax = max(xmax, point.x)
+                    ymin = min(ymin, point.y)
+                    ymax = max(ymax, point.y)
+            coord = [xmin, ymin, xmax, ymax]
+            self.draw_truss()
+        elif filename[-4:] == '.pkl':
+            curr_path = os.getcwd()
+            # TODO: find a better solution for this
+            # exec(open(curr_path+'/examples/base.py').read(), globals())
+            #if curr_path+'/examples' not in sys.path:
+            #    sys.path.append(curr_path+'/examples')
+            with open(filename, 'rb') as file:
+                data = pickle.load(file)
+            self.Truss = data['Truss']
+            self.polygon_in = data['polygon_in']
+            self.polygon_out = data['polygon_out']
+            self.thickness = data['thickness']
+            self.Ac = data['Ac']
+            self.draw_truss()
+
+    def save_model(self):
+        file_dialog = QFileDialog()
+        filename, _ = file_dialog.getSaveFileName(self, 'Save model file', filter='Pickle Files (*.pkl)')
+        if filename:
+            data = {'Truss': self.Truss, 'polygon_in': self.polygon_in, 'polygon_out': self.polygon_out,
+                'thickness': self.thickness, 'Ac': self.Ac}
+            try:
+                with open(filename, 'wb') as file:
+                    pickle.dump(data, file)
+                self.display_message("Model successfully saved", "Save successful", QMessageBox.Icon.Information)
+            except:
+                self.display_message("Model could not be saved", "Error", QMessageBox.Icon.Warning)
+
     def solve_truss(self):
         for e in self.Truss.EdgeList:
-            e.force = 0
-            e.area = 1
-            e.stress = 0
+            if e.area < 1:
+                e.area = 1
         self.Truss.solveTruss(update=True)
         if not self.Truss.checkEquilibrium():
             self.display_message("Truss is not in equilibrium", "Error", QMessageBox.Icon.Warning)
@@ -179,6 +237,32 @@ class MainWindow(QMainWindow):
             self.display_message("Thickness must be positive", "Error", QMessageBox.Icon.Warning)
         else:
             self.thickness = dial_thickness.getThickness()
+
+    def modify_material(self):
+        dial_material = MaterialDialog(self)
+        dial_material.exec()
+        self.material_steel = dial_material.getMaterialSteel()
+        self.material_concrete = dial_material.getMaterialConcrete()
+        self.setMaterial(default = False)
+
+    def setMaterial(self, default = False):
+        if default:
+            # Default material
+            # Reinforcement material values
+            self.material_steel = {'Es': 205000, 'fsy': 435, 'eps_sy': 435 / 205000, 'ds': 1}
+            # Concrete material
+            self.material_concrete = {'Ec': 30000, 'fck': 20, 'eps_c': 0.003, 'dc': -1}
+        if len(self.Truss.MaterialList) == 0:
+            self.Truss.addMaterial(TS.Material(self.material_concrete['Ec'],self.material_concrete['fck'],self.material_concrete['eps_c'],self.material_concrete['dc']))
+            self.Truss.addMaterial(TS.Material(self.material_steel['Es'],self.material_steel['fsy'],self.material_steel['eps_sy'],self.material_steel['ds']))
+        else:
+            self.Truss.updateMaterial(TS.Material(self.material_concrete['Ec'],self.material_concrete['fck'],self.material_concrete['eps_c'],self.material_concrete['dc']), 0)
+            self.Truss.updateMaterial(TS.Material(self.material_steel['Es'],self.material_steel['fsy'],self.material_steel['eps_sy'],self.material_steel['ds']), 1)
+        curr_text = "<b>Material properties:</b><br/>Concrete: Ec = {:.0f} GPa, fck = ".format(
+            self.material_concrete['Ec'] / 1e3) + str(
+            self.material_concrete['fck']) + " MPa<br/>Steel: Es = {:.0f} GPa, fsy = ".format(
+            self.material_steel['Es'] / 1e3) + str(self.material_steel['fsy']) + " MPa"
+        self.text_material.setText(curr_text)
 
     def display_message(self, message, title_message="Message", icon_type = QMessageBox.Icon.Information):
         app.setAttribute(Qt.ApplicationAttribute.AA_DontUseNativeDialogs, True)
@@ -206,19 +290,8 @@ class MainWindow(QMainWindow):
         self.polygon_in = []
         self.polygon_out = []
 
-        # Default material
-        # Reinforcement material values
-        Es = 205000  # MPa
-        fsy = 435  # MPa
-        eps_sy = fsy / Es
-        ds = 1
-        # Concrete material
-        Ec = 30000  # MPa
-        fck = 20  # MPa, fcd
-        eps_c = 0.003
-        dc = -1
-        self.Truss.addMaterial(TS.Material(Ec, fck, eps_c, dc))
-        self.Truss.addMaterial(TS.Material(Es, fsy, eps_sy, ds))
+        # Reset Default material
+        self.setMaterial(default = True)
 
         # clear canvas
         fig = plt.figure(figsize=(10, 5))
@@ -370,6 +443,70 @@ class EdgeMaterialDialog(QDialog):
     def getMaterial(self):
         # index starts with 0
         return int(self.material_index.text())
+
+class MaterialDialog(QDialog):
+    def __init__(self, *args, **kwargs):
+        super(MaterialDialog, self).__init__(*args, **kwargs)
+        self.setWindowTitle("Define material properties")
+        self.resize(QSize(300, 200))
+
+        layout = QVBoxLayout()
+
+        text_steel = QLabel('Steel properties')
+        text_concrete = QLabel('Concrete properties')
+
+        layout_steel = QHBoxLayout()  # layout of steel
+
+        self.Es_Q = QLineEdit()
+        self.Es_Q.setMaxLength(10)
+        self.Es_Q.setPlaceholderText("Es in MPa")
+        layout_steel.addWidget(self.Es_Q)
+
+        self.fsy_Q = QLineEdit()
+        self.fsy_Q.setMaxLength(10)
+        self.fsy_Q.setPlaceholderText("fsy in MPa")
+        layout_steel.addWidget(self.fsy_Q)
+
+        layout_concrete = QHBoxLayout()  # layout of concrete
+
+        self.Ec_Q = QLineEdit()
+        self.Ec_Q.setMaxLength(10)
+        self.Ec_Q.setPlaceholderText("Ec in MPa")
+        layout_concrete.addWidget(self.Ec_Q)
+
+        self.fck_Q = QLineEdit()
+        self.fck_Q.setMaxLength(10)
+        self.fck_Q.setPlaceholderText("fck in MPa")
+        layout_concrete.addWidget(self.fck_Q)
+
+        self.eps_c_Q = QLineEdit()
+        self.eps_c_Q.setMaxLength(10)
+        self.eps_c_Q.setPlaceholderText("epsilon_c")
+        layout_concrete.addWidget(self.eps_c_Q)
+
+        button_close = QPushButton("Done")
+        button_close.clicked.connect(self.accept)
+
+        layout.addWidget(text_steel, stretch=1)
+        layout.addLayout(layout_steel)
+        layout.addWidget(text_concrete, stretch=1)
+        layout.addLayout(layout_concrete)
+        layout.addWidget(button_close)
+
+        self.setLayout(layout)
+
+    def getMaterialSteel(self):
+        Es = float(self.Es_Q.text())
+        fsy = float(self.fsy_Q.text())
+        return {'Es': Es, 'fsy': fsy, 'eps_sy': fsy / Es, 'ds': 1}
+
+    def getMaterialConcrete(self):
+        Ec = float(self.Ec_Q.text())
+        fck = float(self.fck_Q.text())
+        eps_c = float(self.eps_c_Q.text())
+        return {'Ec': Ec, 'fck': fck, 'eps_c': eps_c, 'dc': -1}
+
+
 
 class ThicknessDialog(QDialog):
     def __init__(self, *args, **kwargs):

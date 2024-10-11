@@ -475,6 +475,9 @@ class TrussSystem:
         if mat not in self.MaterialList:
             self.MaterialList.append(mat)
 
+    def updateMaterial(self, mat: Material, index: int):
+        self.MaterialList[index] = mat
+
     def autoAllocateMat(self):
         # 1. Material is for compression & second Material is for tension
         if not self.issolved: raise ValueError('System has not been solved.')
@@ -596,6 +599,8 @@ class TrussSystem:
 
     def checkEquilibrium(self, tol = 1e-6):
         if not self.issolved: raise ValueError('System has not been solved.')
+        if self.getStaticDeterminancy() > 0:
+            print('Static system is overdetermined!')
         Nod = [[0, 0, 0] for _ in self.NodeList]
         for e in self.EdgeList:
             e.getprojectedForce()
