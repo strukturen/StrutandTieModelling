@@ -174,7 +174,7 @@ class DSM(Truss_Solve_Method):
 
 # class to check nodal zones
 class CheckNodalZone():
-    def __init__(self, tol = 200, print_disc_points = False, check_disc_points = False, polygon_in = None, polygon_out = None):
+    def __init__(self, tol = 1e-2, print_disc_points = False, check_disc_points = False, polygon_in = None, polygon_out = None):
         self.tol = tol # tolerance for comparison
         self.print_discontinuity_points = print_disc_points
         self.check_discontinuity_points = check_disc_points
