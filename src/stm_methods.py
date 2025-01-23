@@ -277,6 +277,7 @@ class CheckNodalZone():
                 e.UpdateAreaAuto()
         edges_indices = sorted(range(len(edges)), key = lambda index: edges[index].line.angle)
         edges = [edges[edges_indices[i]] for i in range(len(edges_indices))]
+        num_org_edges = len(edges)
         # 2. if there are more than three intersecting edges they must be reduced to three
         # relative_disc_inter_p_red stores information about reduced edges
         relative_disc_inter_p_red = []
@@ -288,7 +289,6 @@ class CheckNodalZone():
             if edges[new_edge_index].force > 0:
                 edges[new_edge_index].line.mirror(False)
                 edges[new_edge_index].force = -1*edges[new_edge_index].force
-        #print('Reduced number of edges:', len(edges))
         # 3. check for hydrostatic node
         # Nodal zone check for hydrostatic nodes
         if fck < 0:
@@ -302,7 +302,7 @@ class CheckNodalZone():
             fx = fx + e.fx
             fy = fy + e.fy
             fz = fz + e.fz
-            if abs(abs(e.force/e.area) - abs(min_sig)) > self.tol:
+            if abs(abs(e.force/e.area) - abs(min_sig)) > self.tol*(num_org_edges-2): # increase tolerance if multiple edges are there
                 print('Min stress: ', min_sig, 'Curr stress: ', abs(e.force/e.area))
                 raise ValueError("This is not a hydrostatic node.")
             min_sig = min(e.force/e.area, min_sig)
@@ -311,7 +311,7 @@ class CheckNodalZone():
         disc_points = []
         for i in range(len(edges)):
             disc_points.append(self.generate_disc_points(direc, edges, i))
-        if abs(fx)+abs(fy)+abs(fz) < self.tol: # check for force equilibrium with certain tolerance
+        if abs(fx)+abs(fy)+abs(fz) < self.tol*(num_org_edges-2): # check for force equilibrium with certain tolerance
             for i in range(len(relative_disc_inter_p_red)-1, -1, -1):
                 # relative_disc_inter_p_red contains [either intersection point (2 Ties) or distance to intersection point from center point, original edge numbering, case]
                 if relative_disc_inter_p_red[i][2] == 1: # two ties

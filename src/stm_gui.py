@@ -126,6 +126,11 @@ class MainWindow(QMainWindow):
         self.button_add_force.clicked.connect(self.add_force)
         layoutButtons.addWidget(self.button_add_force, stretch=3)
 
+        # Button to modify existing external force
+        self.button_modify_force = QPushButton("Modify force magnitude")
+        self.button_modify_force.clicked.connect(self.modify_force)
+        layoutButtons.addWidget(self.button_modify_force, stretch=3)
+
         # Button to add edges
         self.button_add_edges = QPushButton("Add edge")
         self.button_add_edges.clicked.connect(self.add_edge)
@@ -309,9 +314,9 @@ class MainWindow(QMainWindow):
         self.layoutDraw.replaceWidget(self.canvas, canvas)
         self.canvas = canvas
 
-    def draw_truss(self,  wo_forces= True):
+    def draw_truss(self,  wo_forces= True, w_labels = True):
         fig = self.Truss.plotSTM(fig_size=(10, 5), polygon_in=self.polygon_in, polygon_out=self.polygon_out,
-                           plot_legend=False, without_forces= wo_forces, plot_scale=1e5, label_edges = True)
+                           plot_legend=False, without_forces= wo_forces, plot_scale=1e5, label_edges = w_labels)
         canvas = pltCanvas(fig)
         canvas.draw()
         self.canvas.figure.clf()  # Clear the figure
@@ -369,6 +374,37 @@ class MainWindow(QMainWindow):
                 self.draw_truss()
 
         # Connect the event handler
+        cid = self.canvas.mpl_connect("button_press_event", on_click)
+
+    def modify_force(self):
+        self.draw_truss(w_labels = False)
+        def on_click(event):
+            if event.xdata is not None and event.ydata is not None:
+                curr_point = TS.Point(event.xdata, event.ydata, 0)
+                curr_point.change_abs_tol(150)
+                print('Current Point', curr_point.printPoint())
+                for n in self.Truss.NodeList:
+                    if curr_point == n.point:
+                        clicked_node = n
+                        print('Clicked Node', n.point.printPoint())
+                self.canvas.mpl_disconnect(cid)
+                # get DOFs
+                DOF_force = TS.DOF(0, 0, 0, 0, 0, 0)
+                dial_force = setForceDialog(self)
+                dial_force.exec()
+                Force = dial_force.getForce()
+                Fx, Fy = Force[0], Force[1]
+                if not math.isclose(Fx, 0):
+                    DOF_force.Dx = 1
+                if not math.isclose(Fy, 0):
+                    DOF_force.Dy = 1
+                # find force in ForceList and modify that
+                for f in self.Truss.ForceList:
+                    if f.node == clicked_node:
+                        f.Force_magnitude = [Fx, Fy, 0, 0, 0, 0]
+                        f.dof = DOF_force
+                self.draw_truss()
+
         cid = self.canvas.mpl_connect("button_press_event", on_click)
 
     def add_support(self):
@@ -663,6 +699,7 @@ class AddPolygonDialog(QDialog):
 class pltCanvas(FigureCanvas):
     def __init__(self, fig = None):
         super(pltCanvas, self).__init__(fig)
+
 
 
 

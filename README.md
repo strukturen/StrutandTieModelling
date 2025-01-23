@@ -26,7 +26,7 @@ Furthermore, a simple GUI has been implemented to provide an interactive tool fo
 * **Karin Yu**, ETH Zürich, [strukturen](https://github.com/strukturen) or [my website](http://www.karinyu.com)
 
 ## Contact/Support
-If you encounter problems or have questions please reach out to karin.yu(a)ibk.baug.ethz.ch.
+If you encounter problems, have questions or wish for certain features, please either create a GitHub issue or reach out to karin.yu(a)ibk.baug.ethz.ch.
 
 ## License
 This project is licensed under the Apache License, Version 2.0: http://www.apache.org/licenses/LICENSE-2.0
