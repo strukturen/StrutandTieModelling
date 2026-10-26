@@ -162,11 +162,11 @@ class DSM(Truss_Solve_Method):
 
             Fe_local = ke_local.dot(Ue_local)
 
-            EdgeForces[c] = -1*Fe_local[0]
-            ShearForces[c,0] = Fe_local[1]
-            ShearForces[c, 1] = -1*Fe_local[4]
-            Moments[c,0] = -1*Fe_local[2]
-            Moments[c,1] = Fe_local[5]
+            EdgeForces[c] = -1*Fe_local[0].item()
+            ShearForces[c,0] = Fe_local[1].item()
+            ShearForces[c, 1] = -1*Fe_local[4].item()
+            Moments[c,0] = -1*Fe_local[2].item()
+            Moments[c,1] = Fe_local[5].item()
         return EdgeForces, U, Fr, ShearForces, Moments
 
     def checkvalidTruss(self):

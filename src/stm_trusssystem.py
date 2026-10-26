@@ -689,6 +689,15 @@ class TrussSystem:
             Nod[e.end_id][0] += e.fx
             Nod[e.end_id][1] += e.fy
             Nod[e.end_id][2] += e.fz
+        for s in self.SupportList:
+            node_ind = self.NodeList.index(s.node)
+            for i in range(2):
+                Nod[node_ind][i] -= float(s.force[i].item()) if hasattr(s.force[i], "item") else float(s.force[i])
+        for f in self.ForceList:
+            node_ind = self.NodeList.index(f.node)
+            for i in range(2):
+                Nod[node_ind][i] -= float(f.Force_magnitude[i].item()) if hasattr(f.Force_magnitude[i],"item") else float(f.Force_magnitude[i])
+        print('Nodal equilibrium', np.sum(np.sum(Nod, axis=0)))
         res = np.sum(np.sum(Nod, axis=0))
         return math.isclose(res, 0, rel_tol=tol, abs_tol=tol)
 
@@ -811,14 +820,14 @@ class TrussSystem:
         for i in range(len(self.SupportList)):
             ind = []
             if self.SupportList[i].dof.Dx != 0: # supported in x direction
-                force = float(self.SupportList[i].force[0])
+                force = float(self.SupportList[i].force[0].item())
                 if abs(force) > tol:
                     ind.append(cnt)
                     edge = self.getEdgeEquivalentStrut(force, self.SupportList[i], 'x')
                     EL.append(edge)
                     cnt += 1
             if self.SupportList[i].dof.Dy != 0: # supported in y direction
-                force = float(self.SupportList[i].force[1])
+                force = float(self.SupportList[i].force[1].item())
                 if abs(force) > tol:
                     ind.append(cnt)
                     edge = self.getEdgeEquivalentStrut(force, self.SupportList[i], 'y')
